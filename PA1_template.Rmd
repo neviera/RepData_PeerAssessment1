@@ -1,3 +1,11 @@
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(fig.width=7, fig.height=5, fig.path='figure/', echo=FALSE)
+
+#setting system locale, it helps to display plot axis properly and have dates
+Sys.setlocale(category = "LC_ALL", locale = "english")
+
+```
+
 ---
 title: "Reproducible Research: Peer Assessment 1"
 output: 
@@ -5,21 +13,117 @@ output:
     keep_md: true
 ---
 
-
 ## Loading and preprocessing the data
 
+I read directly from zip file into dataframe. 
+```{r}
+df<-read.csv(unz("activity.zip", "activity.csv"), header=T)
+```
 
+Variable "date" is transformed from factor type variable to date type. 
+```{r}
+df$date<-as.Date(df$date, format="%Y-%m-%d")
+```
 
 ## What is mean total number of steps taken per day?
 
+With help of dplyr package I group data by days and calculate sum of total number 
+of steps taken per each day.  
+Here's how looks first 10 days.  
 
+```{r include=FALSE}
+library(dplyr)
+```
+
+```{r group_data_and_calculate}
+df_sum_by_date <- group_by(df,date) %>% summarize(steps_per_day=sum(steps))
+head(df_sum_by_date,10)
+meansteps <- mean(df_sum_by_date$steps_per_day, na.rm=TRUE)
+mediansteps <- median(df_sum_by_date$steps_per_day, na.rm=TRUE)
+```
+
+```{r histgram_of_data}
+hist(df_sum_by_date$steps_per_day, main="Total number of steps taken per day", 
+     xlab="Steps per day", breaks=8)
+```
+
+Mean total number of steps taken per day is 
+**`r format(round(meansteps, 2), nsmall = 2)`**.  
+Median of total number of steps taken per day is
+**`r format(round(mediansteps, 2), nsmall = 2)`**.
 
 ## What is the average daily activity pattern?
 
+We now group data by 5 minutes intervals and calculate average number od steps 
+for each interval. Plot of data shows average daily activity.  
 
+```{r average_daily_activity_plot}
+#average data, exclude data that is missing
+df_avg_by_interval<-group_by(df,interval) %>% 
+    summarize(avg_steps=mean(steps, na.rm=TRUE))
+library(ggplot2)
+ggplot(df_avg_by_interval, aes(x = interval, y = avg_steps)) +
+    geom_line(col="blue") + 
+    xlab("Time interval by 5 minutes")+
+    ylab("Number of average steps")+
+    ggtitle("Daily activity")
+```
 
 ## Imputing missing values
 
+There are missing values in dataset. 
+There are **`r sum(is.na(df$steps))`** rows that have "steps" value missing.  
 
+I will populate new dataframe with original data and replace missing values 
+with 5-minute average data of days that have value.  
+
+```{r fill_in_missing}
+df_new<-df
+narows<-is.na(df_new$steps)
+df_new[narows,"steps"]<-sapply(df$interval[narows],FUN=function(x){
+    df_avg_by_interval$avg_steps[which(df_avg_by_interval$interval==x)]
+})
+```
+
+
+```{r calculations_new}
+df_sum_by_date_new <- group_by(df_new,date) %>% summarize(steps_per_day=sum(steps))
+meansteps_new <- mean(df_sum_by_date_new$steps_per_day, na.rm=TRUE)
+mediansteps_new <- median(df_sum_by_date_new$steps_per_day, na.rm=TRUE)
+```
+
+Here's histogram of new dataframe with missing values updated.  
+```{r histgram_of_new_data}
+hist(df_sum_by_date_new$steps_per_day, main="Total number of steps taken per day", 
+     xlab="Steps per day", breaks=8)
+```
+
+New mean total number of steps taken per day is 
+**`r format(round(meansteps_new, 2), nsmall = 2)`**.  
+New median of total number of steps taken per day is
+**`r format(round(mediansteps_new, 2), nsmall = 2)`**.  
+
+Mean of new data is same as for original data, but median has changed and now is
+equal to mean. New data is more centered atound mean.  
 
 ## Are there differences in activity patterns between weekdays and weekends?
+
+We want to check for weekday/weekend activity pattern differences. For that purpose
+we create new categorical variable in dataset that categorizes date into "weekend/weekday".  
+
+```{r categorical_new}
+weekdays=c("Monday","Tuesday","Wednesday","Thursday","Friday")
+df_new$weekday<- factor((weekdays(df_new$date) %in% weekdays), 
+         levels=c(FALSE, TRUE), labels=c('weekend', 'weekday'))
+str(df_new$weekday)
+```
+
+Now we group data and compare activities by 5-minute intervals as average steps.  
+
+```{r plot_qlopt_of_activities, fig.height=6}
+df_new<-group_by(df_new,interval,weekday) %>% summarise(avg_steps=mean(steps))
+qplot(data=df_new, x=interval, y=avg_steps, facets = weekday ~ ., 
+      xlab="Time by intervals", ylab="Average steps per interval",
+      main="Comparing activities weekday vs weekend", geom="line")
+```
+
